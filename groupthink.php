@@ -7,6 +7,10 @@ Version: 0.1
 Author: Taylor
 Author URI: http://websitesthatdontsuck.com
 License: GPL
+
+@todo: Create a way to determine what the last link is, if there are no more posts to vote on.
+@todo: Flush rewrite rules on activation.
+
 */
 
 // Include helper files
@@ -88,6 +92,8 @@ class groupthink {
 	 */
 	private function add_filters() {
 		add_filter( 'template_include', array( $this, 'maybe_use_our_template' ) );
+		add_filter( 'manage_edit-' . self::$post_type . '_columns', array( $this, 'setup_columns' ) );
+		add_filter( 'manage_' . self::$post_type . '_posts_custom_column', array( $this, 'populate_columns' ), 10, 2 );
 	}
 
 	/**
@@ -95,6 +101,8 @@ class groupthink {
 	 */
 	private function add_actions() {
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
+		add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
+		add_action( 'admin_init', array( $this, 'register_settings') );
 
 		// Ajax handlers.
 		$methods = array(
@@ -110,8 +118,6 @@ class groupthink {
 			add_action( 'wp_ajax_' . $method, array( $this, 'ajax_handler' ) );
 		}
 
-		add_filter( 'manage_edit-' . self::$post_type . '_columns', array( $this, 'setup_columns' ) );
-		add_filter( 'manage_' . self::$post_type . '_posts_custom_column', array( $this, 'populate_columns' ), 10, 2 );
 	}
 
 	/**
@@ -124,6 +130,60 @@ class groupthink {
 			'ajaxurl' => admin_url( 'admin-ajax.php' ),
 			'nonce'   => wp_create_nonce( 'groupthink-actions' )
 		) );
+	}
+
+	/**
+	 * Add a settings page under the post type menu
+	 */
+	public function add_settings_page() {
+		add_submenu_page( 'edit.php?post_type='. self::$post_type, 'Groupthink Settings', 'Settings', 'manage_options', 'groupthink-settings', array( $this, 'render_settings_page'));
+	}
+
+	/**
+	 * Register settings
+	 */
+	public function register_settings(){
+		register_setting( 'groupthink_options', 'groupthink_options', array( $this, 'validate_options' ));
+		add_settings_section( 'groupthink', '', '__return_false', 'groupthink' );
+		add_settings_field( 'gt_ending_url', 'URL to direct to after all posts have been voted on', array( $this, 'url_field'), 'groupthink', 'groupthink' );
+	}
+
+	/**
+	 * Validate options before saving
+	 */
+	public function validate_options($input) {
+
+		$sanitized_input['gt_ending_url'] = esc_url_raw($input['gt_ending_url']);
+
+		return $sanitized_input;
+	}
+
+	/**
+	 * Render the URL field
+	 */
+	public function url_field() {
+		$options = get_option( 'groupthink_options' );
+		echo "<input id='plugin_text_string' name='groupthink_options[gt_ending_url]' size='40' type='text' value='{$options['gt_ending_url']}' />";
+	}
+
+	/**
+	 * Render the settings page
+	 */
+	public function render_settings_page() {
+		?>
+			<div class="wrap">
+				<?php screen_icon(); ?> <h2><?php echo get_admin_page_title(); ?></h2>
+				<?php settings_errors(); ?>
+				<form action="options.php" method="post">
+					<?php settings_fields( 'groupthink_options' ); ?>
+					<?php do_settings_sections( 'groupthink' ); ?>
+
+					<?php submit_button(); ?>
+
+				</form>
+
+			</div>
+	<?php
 	}
 
 	/**
@@ -252,6 +312,20 @@ class groupthink {
 	}
 
 	/**
+	 * Gets the last URL to redirect users to if there are no posts left to edit
+	 */
+	public function get_ending_url() {
+		$options = get_option( 'groupthink_options' );
+		$url = esc_url( $options['gt_ending_url'] );
+
+		if ( $url ) {
+			return $url;
+		} else {
+			return home_url();
+		}
+	}
+
+	/**
 	 * Adds a vote (a yay) to the $post_id.
 	 *
 	 * @param $post_id integer
@@ -322,7 +396,7 @@ class groupthink {
 		if ( $next->have_posts() ) {
 			return get_permalink( $next->post->ID );
 		} else {
-			return 'http://google.com'; // @todo Fill in with the 'results/no more' page.
+			return $this->get_ending_url();
 		}
 
 	}
@@ -418,8 +492,6 @@ class groupthink {
 	 * it's been filtered, we'll default to the theme's template hierarchy.
 	 */
 	public function maybe_use_our_template( $template ) {
-
-		//@todo this is also a good time to hop in and check if the post itself should be displayed or not. We may want to transfer people to our results/no more page to avoid duplicate voting by URL.
 
 		if ( did_action( 'tdd_groupthink_post_type' ) )
 			return $template;
