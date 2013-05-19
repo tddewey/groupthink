@@ -8,9 +8,6 @@ Author: Taylor
 Author URI: http://websitesthatdontsuck.com
 License: GPL
 
-@todo: Create a way to determine what the last link is, if there are no more posts to vote on.
-@todo: Flush rewrite rules on activation.
-
 */
 
 // Include helper files
@@ -82,6 +79,8 @@ class groupthink {
 		// If the post_type wasn't filtered, we need to set up our groupthink post type
 		if ( ! did_action( 'tdd_groupthink_post_type' ) ) $this->setup_post_type();
 
+		register_activation_hook( __FILE__, array( $this, 'activation' ) );
+
 		// Register other hooks and filters
 		$this->add_filters();
 		$this->add_actions();
@@ -118,6 +117,13 @@ class groupthink {
 			add_action( 'wp_ajax_' . $method, array( $this, 'ajax_handler' ) );
 		}
 
+	}
+
+	/**
+	 * Housekeeping on activation
+	 */
+	public function activation(){
+		flush_rewrite_rules();
 	}
 
 	/**
